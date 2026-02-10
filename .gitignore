@@ -1,0 +1,4 @@
+Plant-Disease-Detection-DL/data/
+Plant-Disease-Detection-DL/plantvillage.zip
+__pycache__/
+*.pyc

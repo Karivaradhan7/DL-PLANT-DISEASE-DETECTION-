@@ -1,0 +1,112 @@
+# Plant Disease Detection Configuration File
+
+# Project Settings
+project_name: "Plant Disease Detection"
+version: "1.0.0"
+description: "Deep Learning project for plant disease detection using TensorFlow"
+
+# Data Configuration
+data:
+  raw_dir: "../../data/raw"
+  processed_dir: "../../data/processed"
+  splits_dir: "../../data/splits"
+  img_size: 224
+  channels: 3
+  validation_split: 0.2
+  test_split: 0.1
+
+# Training Configuration
+training:
+  batch_size: 32
+  epochs: 50
+  learning_rate: 0.001
+  optimizer: "adam"
+  loss_function: "sparse_categorical_crossentropy"
+  early_stopping_patience: 10
+  reduce_lr_patience: 5
+  reduce_lr_factor: 0.5
+
+# Model Configuration
+models:
+  # Review 1: MLP and CNN
+  mlp:
+    type: "mlp"
+    dropout_rate: 0.5
+    layers: [512, 256, 128, 64]
+    activation: "relu"
+    
+  cnn:
+    type: "cnn"
+    dropout_rate: 0.5
+    blocks: 4
+    filters: [32, 64, 128, 256]
+    kernel_size: 3
+  
+  # Review 2: Transfer Learning
+  transfer_learning:
+    type: "transfer_learning"
+    base_model: "MobileNetV2"
+    freeze_base: true
+    unfreeze_layers: 30
+    dropout_rate: 0.5
+    learning_rate: 0.001
+    finetune_learning_rate: 0.0001
+  
+  # Review 3: Autoencoder and DCGAN
+  autoencoder:
+    type: "autoencoder"
+    latent_dim: 128
+    loss: "mse"
+    
+  dcgan:
+    type: "dcgan"
+    latent_dim: 100
+    batch_size: 32
+    epochs: 100
+    learning_rate: 0.0002
+    beta_1: 0.5
+
+# Output Configuration
+output:
+  plots_dir: "../../outputs/plots"
+  confusion_matrices_dir: "../../outputs/confusion_matrices"
+  generated_images_dir: "../../outputs/generated_images"
+  logs_dir: "../../outputs/logs"
+  saved_models_dir: "../../saved_models"
+
+# Experiment Configuration
+experiments:
+  R1:
+    description: "MLP and CNN Models"
+    models: ["mlp", "cnn"]
+    epochs: 50
+    
+  R2:
+    description: "Transfer Learning with MobileNetV2"
+    models: ["transfer_learning"]
+    epochs: 30
+    
+  R3:
+    description: "Autoencoder and DCGAN"
+    models: ["autoencoder", "dcgan"]
+    epochs: 50
+
+# Streamlit App Configuration
+streamlit:
+  title: "🌿 Plant Disease Detection System"
+  page_icon: "🌿"
+  layout: "wide"
+  theme: "light"
+  max_upload_size_mb: 200
+
+# Device Configuration
+device:
+  use_gpu: true
+  mixed_precision: false
+
+# Class Names (Update based on your dataset)
+class_names:
+  - "Healthy"
+  - "Disease_1"
+  - "Disease_2"
+  - "Disease_3"
