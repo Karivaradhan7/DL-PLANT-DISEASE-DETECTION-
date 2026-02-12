@@ -10,28 +10,84 @@ from PIL import Image
 import os
 from pathlib import Path
 import sys
+import json
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from data_loader import PlantDiseaseDataLoader
+
+def load_class_names():
+    """Load class names from JSON file"""
+    class_names_path = Path(__file__).parent.parent / "saved_models" / "class_names.json"
+    if class_names_path.exists():
+        with open(class_names_path, 'r') as f:
+            return json.load(f)
+    return None
+
+
+def detect_model_type(model_path):
+    """
+    Detect if model is EfficientNet or older CNN
+    
+    Args:
+        model_path: Path to model file or directory
+        
+    Returns:
+        'efficientnet' or 'cnn'
+    """
+    model_name = str(model_path).lower()
+    
+    if 'efficientnet' in model_name:
+        return 'efficientnet'
+    elif 'cnn' in model_name:
+        return 'cnn'
+    else:
+        # Default to efficientnet as it's the newer model
+        return 'efficientnet'
 
 
 def load_model(model_path):
-    """Load trained model"""
+    """Load trained model (supports both .h5 and SavedModel formats)"""
     try:
-        model = tf.keras.models.load_model(model_path)
+        model_path = str(model_path)
+        
+        # Check if it's a SavedModel directory or .h5 file
+        if os.path.isdir(model_path):
+            # Load SavedModel format
+            model = tf.keras.models.load_model(model_path)
+        else:
+            # Load .h5 format
+            model = tf.keras.models.load_model(model_path)
+        
         return model
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return None
 
 
-def preprocess_image(image, img_size=224):
-    """Preprocess uploaded image"""
+def preprocess_image(image, img_size=224, is_efficientnet=True):
+    """
+    Preprocess uploaded image for model inference
+    
+    Args:
+        image: PIL Image object
+        img_size: Target image size
+        is_efficientnet: Whether using EfficientNet model (applies proper preprocessing)
+    """
+    # Convert RGBA to RGB if needed
+    if image.mode in ('RGBA', 'LA', 'P'):
+        image = image.convert('RGB')
+    
     image = image.resize((img_size, img_size))
-    image_array = np.array(image)
-    image_array = image_array / 255.0
+    image_array = np.array(image, dtype=np.float32)
+    
+    if is_efficientnet:
+        # Apply EfficientNet preprocessing
+        image_array = tf.keras.applications.efficientnet.preprocess_input(image_array)
+    else:
+        # Standard normalization
+        image_array = image_array / 255.0
+    
     image_array = np.expand_dims(image_array, axis=0)
     return image_array
 
@@ -116,7 +172,7 @@ def main():
             # Get available models
             available_models = []
             if saved_models_dir.exists():
-                available_models = [f.name for f in saved_models_dir.glob("*.h5")]
+                available_models = [f.name for f in saved_models_dir.glob("*.h5")] + [f.name for f in saved_models_dir.glob("*.keras")]
             
             if not available_models:
                 st.warning("No trained models found in saved_models directory.")
@@ -127,12 +183,17 @@ def main():
                 available_models
             )
             
-            # Class names (should be loaded from config in production)
-            class_names = st.text_input(
-                "Class Names (comma-separated):",
-                value="Healthy,Disease1,Disease2,Disease3"
-            ).split(",")
-            class_names = [name.strip() for name in class_names]
+            # Load class names from JSON if available, otherwise use defaults
+            saved_class_names = load_class_names()
+            if saved_class_names:
+                class_names = saved_class_names
+                st.info(f"✓ Loaded {len(class_names)} classes from saved model")
+            else:
+                class_names = st.text_input(
+                    "Class Names (comma-separated):",
+                    value="Healthy,Disease1,Disease2,Disease3"
+                ).split(",")
+                class_names = [name.strip() for name in class_names]
             
             if st.button("🔍 Predict Disease"):
                 if uploaded_file is not None:
@@ -141,7 +202,11 @@ def main():
                         model = load_model(str(model_path))
                         
                         if model is not None:
-                            image_array = preprocess_image(image, img_size=224)
+                            # Detect model type and use appropriate preprocessing
+                            model_type = detect_model_type(selected_model)
+                            is_efficientnet = (model_type == 'efficientnet')
+                            
+                            image_array = preprocess_image(image, img_size=224, is_efficientnet=is_efficientnet)
                             predicted_class, confidence, all_predictions = predict_disease(
                                 model, image_array, class_names
                             )
@@ -184,29 +249,39 @@ def main():
             # Get available models
             available_models = []
             if saved_models_dir.exists():
-                available_models = [f.name for f in saved_models_dir.glob("*.h5")]
+                available_models = [f.name for f in saved_models_dir.glob("*.h5")] + [f.name for f in saved_models_dir.glob("*.keras")]
             
             if not available_models:
                 st.warning("No trained models found in saved_models directory.")
             else:
                 selected_model = st.selectbox("Select Model:", available_models)
-                class_names = st.text_input(
-                    "Class Names (comma-separated):",
-                    value="Healthy,Disease1,Disease2,Disease3"
-                ).split(",")
-                class_names = [name.strip() for name in class_names]
+                
+                # Load class names from JSON if available
+                saved_class_names = load_class_names()
+                if saved_class_names:
+                    class_names = saved_class_names
+                else:
+                    class_names = st.text_input(
+                        "Class Names (comma-separated):",
+                        value="Healthy,Disease1,Disease2,Disease3"
+                    ).split(",")
+                    class_names = [name.strip() for name in class_names]
                 
                 if st.button("🔍 Process Batch"):
                     model_path = saved_models_dir / selected_model
                     model = load_model(str(model_path))
                     
                     if model is not None:
+                        # Detect model type for appropriate preprocessing
+                        model_type = detect_model_type(selected_model)
+                        is_efficientnet = (model_type == 'efficientnet')
+                        
                         results = []
                         progress_bar = st.progress(0)
                         
                         for idx, uploaded_file in enumerate(uploaded_files):
                             image = Image.open(uploaded_file)
-                            image_array = preprocess_image(image, img_size=224)
+                            image_array = preprocess_image(image, img_size=224, is_efficientnet=is_efficientnet)
                             predicted_class, confidence, _ = predict_disease(
                                 model, image_array, class_names
                             )
@@ -241,7 +316,7 @@ def main():
         # Get available models
         available_models = []
         if saved_models_dir.exists():
-            available_models = [f.name for f in saved_models_dir.glob("*.h5")]
+            available_models = [f.name for f in saved_models_dir.glob("*.h5")] + [f.name for f in saved_models_dir.glob("*.keras")]
         
         if not available_models:
             st.warning("No trained models found.")

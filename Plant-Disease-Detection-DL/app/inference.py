@@ -96,6 +96,10 @@ class DiseasePredictor:
     
     def _preprocess_image(self, image):
         """Preprocess PIL Image"""
+        # Convert RGBA to RGB if needed
+        if image.mode in ('RGBA', 'LA', 'P'):
+            image = image.convert('RGB')
+        
         image = image.resize((self.img_size, self.img_size))
         image_array = np.array(image, dtype=np.float32) / 255.0
         image_array = np.expand_dims(image_array, axis=0)
