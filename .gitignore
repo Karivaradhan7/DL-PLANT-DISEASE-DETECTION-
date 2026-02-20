@@ -1,4 +1,5 @@
 Plant-Disease-Detection-DL/data/
 Plant-Disease-Detection-DL/plantvillage.zip
+Plant-Disease-Detection-DL/venv_plant/
 __pycache__/
 *.pyc

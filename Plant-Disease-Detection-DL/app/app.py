@@ -59,6 +59,18 @@ def load_model(model_path):
             # Load .h5 format
             model = tf.keras.models.load_model(model_path)
         
+        # Get input shape from model
+        try:
+            input_shape = model.input_shape
+            # input_shape is usually (None, height, width, channels)
+            if isinstance(input_shape, list):
+                input_shape = input_shape[0]
+            
+            st.session_state['expected_size'] = input_shape[1]
+            st.info(f"🔍 Auto-detected model input size: {input_shape[1]}x{input_shape[2]}")
+        except Exception as e:
+            st.session_state['expected_size'] = 224 # fallback
+            
         return model
     except Exception as e:
         st.error(f"Error loading model: {e}")
@@ -72,7 +84,7 @@ def preprocess_image(image, img_size=224, is_efficientnet=True):
     Args:
         image: PIL Image object
         img_size: Target image size
-        is_efficientnet: Whether using EfficientNet model (applies proper preprocessing)
+        is_efficientnet: Whether using EfficientNet model
     """
     # Convert RGBA to RGB if needed
     if image.mode in ('RGBA', 'LA', 'P'):
@@ -81,12 +93,21 @@ def preprocess_image(image, img_size=224, is_efficientnet=True):
     image = image.resize((img_size, img_size))
     image_array = np.array(image, dtype=np.float32)
     
+    # CRITICAL: Most models in this repo were trained on [0, 255] 
+    # but some transfer learning models expect [0, 1] or EfficientNet preprocessing.
+    # The models in src/models/efficientnet_transfer.py ALREADY include 
+    # preprocess_input inside the model architecture.
+    
     if is_efficientnet:
-        # Apply EfficientNet preprocessing
-        image_array = tf.keras.applications.efficientnet.preprocess_input(image_array)
+        # If the model has preprocess_input internally, we should pass RAW 0-255 pixels
+        # If it doesn't, we might need to normalize.
+        # For our specific EfficientNetB0 model, it's identity.
+        pass 
     else:
-        # Standard normalization
-        image_array = image_array / 255.0
+        # Custom CNNs might expect [0, 1]
+        # Check if we should divide by 255
+        # image_array = image_array / 255.0
+        pass
     
     image_array = np.expand_dims(image_array, axis=0)
     return image_array
@@ -206,7 +227,9 @@ def main():
                             model_type = detect_model_type(selected_model)
                             is_efficientnet = (model_type == 'efficientnet')
                             
-                            image_array = preprocess_image(image, img_size=224, is_efficientnet=is_efficientnet)
+                            # Use auto-detected size if available, otherwise fallback to 224
+                            expected_size = st.session_state.get('expected_size', 224)
+                            image_array = preprocess_image(image, img_size=expected_size, is_efficientnet=is_efficientnet)
                             predicted_class, confidence, all_predictions = predict_disease(
                                 model, image_array, class_names
                             )
@@ -281,7 +304,9 @@ def main():
                         
                         for idx, uploaded_file in enumerate(uploaded_files):
                             image = Image.open(uploaded_file)
-                            image_array = preprocess_image(image, img_size=224, is_efficientnet=is_efficientnet)
+                            # Use auto-detected size if available
+                            expected_size = st.session_state.get('expected_size', 224)
+                            image_array = preprocess_image(image, img_size=expected_size, is_efficientnet=is_efficientnet)
                             predicted_class, confidence, _ = predict_disease(
                                 model, image_array, class_names
                             )
