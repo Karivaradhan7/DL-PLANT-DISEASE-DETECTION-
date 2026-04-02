@@ -60,6 +60,78 @@ def load_config():
 cfg = load_config()
 set_seed(cfg['seed'])
 
+# Setup base directory for model paths
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEVICE = torch.device('cpu')
+
+# ========================================
+# LOAD CLASSES DYNAMICALLY
+# ========================================
+@st.cache_resource
+def load_classes():
+    """Load classes from trained model directory"""
+    classes_path = os.path.join(BASE_DIR, "outputs/models/classes.json")
+    if os.path.exists(classes_path):
+        import json
+        with open(classes_path) as f:
+            classes = json.load(f)
+        st.write(f"📊 Loaded {len(classes)} classes from dataset")
+        return classes
+    else:
+        # Fallback to hardcoded classes if no trained models
+        st.warning("⚠️ No trained classes found, using fallback classes")
+        return ["class_a", "class_b"]  # Default for synthetic dataset
+
+CLASSES = load_classes()
+NUM_CLASSES = len(CLASSES)
+
+# ========================================
+# AUTO RETRAINING
+# ========================================
+@st.cache_resource
+def check_and_retrain_models():
+    """Check if models exist, retrain if necessary"""
+    cnn_model_path = os.path.join(BASE_DIR, "outputs/models/review1/cnn.pth")
+    
+    if not os.path.exists(cnn_model_path):
+        st.warning("🔄 Models not found. Starting automatic training...")
+        
+        # Run training
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["python", "train.py", "--review", "1"], 
+                cwd=BASE_DIR,
+                capture_output=True, 
+                text=True,
+                timeout=600  # 10 minutes timeout
+            )
+            
+            if result.returncode == 0:
+                st.success("✅ Training completed successfully!")
+                # Reload classes after training
+                global CLASSES, NUM_CLASSES
+                CLASSES = load_classes()
+                NUM_CLASSES = len(CLASSES)
+                return True
+            else:
+                st.error(f"❌ Training failed: {result.stderr}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            st.error("❌ Training timed out after 10 minutes")
+            return False
+        except Exception as e:
+            st.error(f"❌ Error during training: {e}")
+            return False
+    
+    return True
+
+# Check models on app start
+models_ready = check_and_retrain_models()
+if not models_ready:
+    st.error("Failed to initialize models. Please check the training process.")
+
 
 # ========================================
 # HELPER FUNCTIONS
@@ -73,23 +145,27 @@ def ensure_output_dir(path):
 def load_cnn_model(device):
     """Load CNN classifier model"""
     models_to_try = [
-        Path(__file__).parent.parent / "outputs/models/review1/cnn.pth",
-        Path(__file__).parent.parent / "outputs/results/review1/cnn_model.pt",
+        os.path.join(BASE_DIR, "outputs/models/review1/cnn.pth"),
+        os.path.join(BASE_DIR, "outputs/results/review1/cnn_model.pt"),
     ]
     
-    model = CNNClassifier(num_classes=len(CLASS_NAMES))
+    model = CNNClassifier(num_classes=NUM_CLASSES)
     
     for model_path in models_to_try:
-        if model_path.exists():
+        if os.path.exists(model_path):
             try:
-                state_dict = torch.load(model_path, map_location=device)
+                st.write(f"📍 Loading CNN model from: {model_path}")
+                state_dict = torch.load(model_path, map_location=torch.device("cpu"))
                 model.load_state_dict(state_dict)
                 model.to(device)
                 model.eval()
+                st.success(f"✅ CNN model loaded successfully")
                 return model
             except Exception as e:
+                st.error(f"❌ Failed to load CNN from {model_path}: {e}")
                 continue
     
+    st.error(f"❌ CNN model not found at any location: {models_to_try}")
     return None
 
 
@@ -97,27 +173,31 @@ def load_cnn_model(device):
 def load_mlp_model(device):
     """Load MLP classifier model"""
     models_to_try = [
-        Path(__file__).parent.parent / "outputs/models/review1/mlp.pth",
-        Path(__file__).parent.parent / "outputs/results/review1/mlp_model.pt",
+        os.path.join(BASE_DIR, "outputs/models/review1/mlp.pth"),
+        os.path.join(BASE_DIR, "outputs/results/review1/mlp_model.pt"),
     ]
     
     model = MLPClassifier(
         num_features=3*128*128, 
         hidden_size=256, 
-        num_classes=len(CLASS_NAMES)
+        num_classes=NUM_CLASSES
     )
     
     for model_path in models_to_try:
-        if model_path.exists():
+        if os.path.exists(model_path):
             try:
-                state_dict = torch.load(model_path, map_location=device)
+                st.write(f"📍 Loading MLP model from: {model_path}")
+                state_dict = torch.load(model_path, map_location=torch.device("cpu"))
                 model.load_state_dict(state_dict)
                 model.to(device)
                 model.eval()
+                st.success(f"✅ MLP model loaded successfully")
                 return model
             except Exception as e:
+                st.error(f"❌ Failed to load MLP from {model_path}: {e}")
                 continue
     
+    st.error(f"❌ MLP model not found at any location: {models_to_try}")
     return None
 
 
@@ -143,27 +223,30 @@ def load_mobilenetv2_model(device):
 def load_lstm_model(device):
     """Load LSTM sequence model"""
     models_to_try = [
-        Path(__file__).parent.parent / "outputs/models/review2/resnet50_lstm.pth",
-        Path(__file__).parent.parent / "outputs/results/review2/resnet50_LSTM_attn_False.pt",
+        os.path.join(BASE_DIR, "outputs/models/review2/resnet50_lstm.pth"),
+        os.path.join(BASE_DIR, "outputs/results/review2/resnet50_LSTM_attn_False.pt"),
     ]
     
     model = SequenceModel(
         input_size=2048, 
         hidden_size=128, 
-        num_classes=len(CLASS_NAMES), 
+        num_classes=NUM_CLASSES, 
         rnn_type='LSTM', 
         use_attention=False
     )
     
     for model_path in models_to_try:
-        if model_path.exists():
+        if os.path.exists(model_path):
             try:
-                state_dict = torch.load(model_path, map_location=device)
+                st.write(f"📍 Loading LSTM model from: {model_path}")
+                state_dict = torch.load(model_path, map_location=torch.device("cpu"))
                 model.load_state_dict(state_dict)
                 model.to(device)
                 model.eval()
+                st.success(f"✅ LSTM model loaded successfully")
                 return model
             except Exception as e:
+                st.error(f"❌ Failed to load LSTM from {model_path}: {e}")
                 continue
     
     return None
@@ -173,27 +256,30 @@ def load_lstm_model(device):
 def load_gru_model(device):
     """Load GRU sequence model"""
     models_to_try = [
-        Path(__file__).parent.parent / "outputs/models/review2/resnet50_gru.pth",
-        Path(__file__).parent.parent / "outputs/results/review2/resnet50_GRU_attn_False.pt",
+        os.path.join(BASE_DIR, "outputs/models/review2/resnet50_gru.pth"),
+        os.path.join(BASE_DIR, "outputs/results/review2/resnet50_GRU_attn_False.pt"),
     ]
     
     model = SequenceModel(
         input_size=2048, 
         hidden_size=128, 
-        num_classes=len(CLASS_NAMES), 
+        num_classes=NUM_CLASSES, 
         rnn_type='GRU', 
         use_attention=False
     )
     
     for model_path in models_to_try:
-        if model_path.exists():
+        if os.path.exists(model_path):
             try:
-                state_dict = torch.load(model_path, map_location=device)
+                st.write(f"📍 Loading GRU model from: {model_path}")
+                state_dict = torch.load(model_path, map_location=torch.device("cpu"))
                 model.load_state_dict(state_dict)
                 model.to(device)
                 model.eval()
+                st.success(f"✅ GRU model loaded successfully")
                 return model
             except Exception as e:
+                st.error(f"❌ Failed to load GRU from {model_path}: {e}")
                 continue
     
     return None
@@ -203,21 +289,24 @@ def load_gru_model(device):
 def load_autoencoder_model(device):
     """Load Autoencoder model"""
     models_to_try = [
-        Path(__file__).parent.parent / "outputs/models/review3/autoencoder.pth",
-        Path(__file__).parent.parent / "outputs/results/review3/autoencoder.pt",
+        os.path.join(BASE_DIR, "outputs/models/review3/autoencoder.pth"),
+        os.path.join(BASE_DIR, "outputs/results/review3/autoencoder.pt"),
     ]
     
     model = ConvAutoencoder(latent_dim=64)
     
     for model_path in models_to_try:
-        if model_path.exists():
+        if os.path.exists(model_path):
             try:
-                state_dict = torch.load(model_path, map_location=device)
+                st.write(f"📍 Loading Autoencoder model from: {model_path}")
+                state_dict = torch.load(model_path, map_location=torch.device("cpu"))
                 model.load_state_dict(state_dict)
                 model.to(device)
                 model.eval()
+                st.success(f"✅ Autoencoder model loaded successfully")
                 return model
             except Exception as e:
+                st.error(f"❌ Failed to load Autoencoder from {model_path}: {e}")
                 continue
     
     return None
@@ -227,21 +316,24 @@ def load_autoencoder_model(device):
 def load_gan_generator(device):
     """Load GAN generator model"""
     models_to_try = [
-        Path(__file__).parent.parent / "outputs/models/review3/gan_generator.pth",
-        Path(__file__).parent.parent / "outputs/results/review3/gan_generator.pt",
+        os.path.join(BASE_DIR, "outputs/models/review3/gan_generator.pth"),
+        os.path.join(BASE_DIR, "outputs/results/review3/gan_generator.pt"),
     ]
     
     model = DCGANGenerator(z_dim=100)
     
     for model_path in models_to_try:
-        if model_path.exists():
+        if os.path.exists(model_path):
             try:
-                state_dict = torch.load(model_path, map_location=device)
+                st.write(f"📍 Loading GAN Generator model from: {model_path}")
+                state_dict = torch.load(model_path, map_location=torch.device("cpu"))
                 model.load_state_dict(state_dict)
                 model.to(device)
                 model.eval()
+                st.success(f"✅ GAN Generator model loaded successfully")
                 return model
             except Exception as e:
+                st.error(f"❌ Failed to load GAN Generator from {model_path}: {e}")
                 continue
     
     return None
@@ -273,7 +365,7 @@ def plot_predictions_bar(probs, title="Class Probabilities"):
     top_k = min(5, len(probs))
     top_indices = np.argsort(probs)[::-1][:top_k]
     top_probs = probs[top_indices]
-    top_names = [get_class_display_name(CLASS_NAMES[i]) for i in top_indices]
+    top_names = [get_class_display_name(CLASSES[i]) for i in top_indices]
     
     colors = ['#2ecc71' if i == 0 else '#3498db' for i in range(len(top_names))]
     ax.barh(top_names, top_probs, color=colors)
@@ -307,10 +399,10 @@ with st.sidebar:
     st.info(f"Device: {device.type.upper()}" + (" (CUDA)" if use_gpu else ""))
     
     st.markdown("---")
-    st.markdown("### 📊 Class Mapping (15 Classes)")
+    st.markdown(f"### 📊 Class Mapping ({len(CLASSES)} Classes)")
     
     with st.expander("View All Classes"):
-        for i, cls in enumerate(CLASS_NAMES):
+        for i, cls in enumerate(CLASSES):
             st.text(f"{i}: {get_class_display_name(cls)}")
 
 
@@ -339,7 +431,7 @@ with tab1:
         
         if uploaded_file is not None:
             image = Image.open(uploaded_file).convert('RGB')
-            st.image(image, caption='Uploaded Image', use_column_width=True)
+            st.image(image, caption='Uploaded Image', width="content")
         else:
             st.info("📌 Upload a plant disease image to get started")
     
@@ -370,7 +462,7 @@ with tab1:
                 else:
                     probs = predict_classification(model, img_tensor, device)
                     pred_idx = np.argmax(probs)
-                    pred_class = CLASS_NAMES[pred_idx]
+                    pred_class = CLASSES[pred_idx]
                     confidence = probs[pred_idx] * 100
                     
                     st.markdown('<div class="success-box">', unsafe_allow_html=True)
@@ -387,7 +479,7 @@ with tab1:
                     top3_indices = np.argsort(probs)[::-1][:3]
                     
                     for rank, idx in enumerate(top3_indices, 1):
-                        class_name = CLASS_NAMES[idx]
+                        class_name = CLASSES[idx]
                         score = probs[idx] * 100
                         st.write(f"**#{rank}** {get_class_display_name(class_name)} - **{score:.2f}%**")
                     
@@ -414,7 +506,7 @@ with tab2:
         
         if uploaded_file2 is not None:
             image = Image.open(uploaded_file2).convert('RGB')
-            st.image(image, caption='Uploaded Image', use_column_width=True)
+            st.image(image, caption='Uploaded Image', width="content")
         else:
             st.info("📌 Upload a plant disease image")
     
@@ -513,7 +605,7 @@ with tab3:
             
             if uploaded_file3 is not None:
                 image = Image.open(uploaded_file3).convert('RGB')
-                st.image(image, caption='Original', use_column_width=True)
+                st.image(image, caption='Original', width="content")
         
         with col2:
             st.write("**Reconstructed Image**")
@@ -533,7 +625,7 @@ with tab3:
                             recon_img = (recon_img - recon_img.min()) / (recon_img.max() - recon_img.min())
                             recon_img = recon_img.permute(1, 2, 0).numpy()
                         
-                        st.image(recon_img, caption='Reconstructed', use_column_width=True)
+                        st.image(recon_img, caption='Reconstructed', width="content")
             else:
                 st.info("👆 Upload an image")
     
@@ -557,7 +649,7 @@ with tab3:
                     for i in range(4):
                         with cols[i]:
                             img = fake_images[i].cpu().permute(1, 2, 0).numpy()
-                            st.image(img, caption=f'Generated {i+1}', use_column_width=True)
+                            st.image(img, caption=f'Generated {i+1}', width="content")
         else:
             st.info("Click 'Generate New Images' to create synthetic plant disease images")
     

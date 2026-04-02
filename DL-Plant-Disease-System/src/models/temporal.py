@@ -30,7 +30,11 @@ class PretrainedExtractor(nn.Module):
             self.out_features = 2048
         else:
             base = models.mobilenet_v2(pretrained=pretrained)
-            self.feature_extractor = nn.Sequential(*list(base.children())[:-1])
+            # Mobilenet features return spatial map (B, 1280, H, W); apply adaptive pooling to flatten like resnet
+            self.feature_extractor = nn.Sequential(
+                *list(base.children())[:-1],
+                nn.AdaptiveAvgPool2d((1, 1))
+            )
             self.out_features = 1280
 
     def forward(self, x):

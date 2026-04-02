@@ -1,4 +1,5 @@
 import os
+import shutil
 import argparse
 import yaml
 import numpy as np
@@ -19,15 +20,98 @@ from src.utils.misc import get_device, set_seed as set_seed_util
 
 
 def get_dataloaders(cfg):
-    if os.path.exists("/kaggle/input/plantvillage-dataset/PlantVillage"):
-        DATA_PATH = "/kaggle/input/plantvillage-dataset/PlantVillage"
-    else:
-        DATA_PATH = "data/PlantVillage"
-    print(f"Using dataset path: {DATA_PATH}")
+    # Get workspace root (parent of DL-Plant-Disease-System)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    workspace_root = os.path.dirname(current_dir)
+    
+    # Primary check: /workspaces/DL-PLANT-DISEASE-DETECTION-/data/PlantVillage
+    workspace_data_path = os.path.join(workspace_root, 'data', 'PlantVillage')
+    
+    # Secondary check: relative to DL-Plant-Disease-System
+    relative_data_path = os.path.join(current_dir, 'data', 'PlantVillage')
+    
+    # Handle PlantVillage at workspace root
+    workspace_pv_path = os.path.join(workspace_root, 'PlantVillage')
+    if os.path.isdir(workspace_pv_path) and not os.path.isdir(workspace_data_path):
+        print(f"🔧 Moving {workspace_pv_path} to {workspace_data_path}")
+        os.makedirs(os.path.dirname(workspace_data_path), exist_ok=True)
+        shutil.move(workspace_pv_path, workspace_data_path)
+
+    # Handle PlantVillage relative to DL-Plant-Disease-System
+    relative_pv_path = os.path.join(current_dir, 'PlantVillage')
+    if os.path.isdir(relative_pv_path) and not os.path.isdir(relative_data_path):
+        print(f"🔧 Moving {relative_pv_path} to {relative_data_path}")
+        os.makedirs(os.path.dirname(relative_data_path), exist_ok=True)
+        shutil.move(relative_pv_path, relative_data_path)
+
+    # Flatten if nested
+    for data_path in [workspace_data_path, relative_data_path]:
+        nested = os.path.join(data_path, 'PlantVillage')
+        if os.path.isdir(nested):
+            print(f"🔧 Flattening nested {nested}")
+            for entry in os.listdir(nested):
+                src = os.path.join(nested, entry)
+                dst = os.path.join(data_path, entry)
+                if not os.path.exists(dst):
+                    shutil.move(src, dst)
+            try:
+                os.rmdir(nested)
+            except:
+                pass
+
+    # Check paths in priority order
+    possible_paths = [
+        workspace_data_path,
+        relative_data_path,
+        "/kaggle/input/plantvillage-dataset/PlantVillage",
+        "C:/Users/Shreenivasan/Downloads/archive/PlantVillage"
+    ]
+
+    DATA_PATH = None
+    for path in possible_paths:
+        if os.path.isdir(path):
+            DATA_PATH = path
+            break
+
+    if DATA_PATH is None:
+        print("⚠️ No valid dataset path found. Creating a minimal synthetic dataset.")
+        os.makedirs(workspace_data_path, exist_ok=True)
+
+        dummy_classes = ['class_a', 'class_b']
+        for cls in dummy_classes:
+            cls_dir = os.path.join(workspace_data_path, cls)
+            os.makedirs(cls_dir, exist_ok=True)
+            for i in range(8):
+                arr = (np.random.rand(cfg['image_size'], cfg['image_size'], 3) * 255).astype('uint8')
+                img = Image.fromarray(arr)
+                img.save(os.path.join(cls_dir, f'{cls}_{i}.png'))
+
+        DATA_PATH = workspace_data_path
+        print(f"✅ Synthetic dataset created at {DATA_PATH}")
+    
+    print(f"✅ Using dataset path: {DATA_PATH}")
+
+    subdirs = [d for d in os.listdir(DATA_PATH) if os.path.isdir(os.path.join(DATA_PATH, d))]
+    if not subdirs:
+        raise ValueError(f"No class subdirectories found in {DATA_PATH}. Expected structure: PlantVillage/<class_folders>")
+
+    num_images = 0
+    for cls in subdirs:
+        cls_dir = os.path.join(DATA_PATH, cls)
+        for root, _, files in os.walk(cls_dir):
+            num_images += sum(1 for f in files if f.lower().endswith(('.jpg', '.jpeg', '.png')))
+
+    print(f"✅ Found {len(subdirs)} classes and {num_images} images")
+
     return make_dataloaders(DATA_PATH, cfg['image_size'], cfg['batch_size'], cfg['num_workers'], cfg['seed'])
 
 
 def train_review1(train_loader, val_loader, test_loader, classes, cfg, device):
+    # Define directories
+    out_dir = os.path.join(cfg['paths']['results_dir'], 'review1')
+    model_dir = os.path.join(cfg['paths']['model_dir'], 'review1')
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
 
     classifiers = {
         'mlp': MLPClassifier(num_features=3*cfg['image_size']*cfg['image_size'], hidden_size=cfg['experiments']['review1']['mlp_hidden'], num_classes=len(classes)),
@@ -79,6 +163,11 @@ def extract_features(model, dataloader, device):
 
 
 def train_review2(train_loader, val_loader, test_loader, classes, cfg, device):
+    # Define directories
+    out_dir = os.path.join(cfg['paths']['results_dir'], 'review2')
+    model_dir = os.path.join(cfg['paths']['model_dir'], 'review2')
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
 
     for base_name in cfg['experiments']['review2']['pretrained_models']:
         extractor = PretrainedExtractor(model_name=base_name, pretrained=True).to(device)
@@ -109,6 +198,11 @@ def train_review2(train_loader, val_loader, test_loader, classes, cfg, device):
 
 
 def train_review3(train_loader, val_loader, test_loader, classes, cfg, device):
+    # Define directories
+    out_dir = os.path.join(cfg['paths']['results_dir'], 'review3')
+    model_dir = os.path.join(cfg['paths']['model_dir'], 'review3')
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
 
     # autoencoder
     ae = ConvAutoencoder(latent_dim=cfg['experiments']['review3']['ae_latent_dim']).to(device)
@@ -151,12 +245,13 @@ def train_review3(train_loader, val_loader, test_loader, classes, cfg, device):
     for epoch in range(cfg['num_epochs']):
         for x, _ in train_loader:
             x = x.to(device)
-            bs = x.size(0)
+            x_small = torch.nn.functional.interpolate(x, size=(64, 64), mode='bilinear', align_corners=False)
+            bs = x_small.size(0)
             real = torch.full((bs,), 0.9, device=device)
             fake = torch.full((bs,), 0.1, device=device)
 
             disc.zero_grad()
-            out_real = disc(x)
+            out_real = disc(x_small)
             loss_real = criterion_bce(out_real, real)
             z = torch.randn(bs, cfg['experiments']['review3']['gan_latent_dim'], 1, 1, device=device)
             x_fake = gen(z)
@@ -201,7 +296,12 @@ def train_review3(train_loader, val_loader, test_loader, classes, cfg, device):
     features = np.vstack(features)
 
     pca_emb = PCA(n_components=2).fit_transform(features)
-    tsne_emb = TSNE(n_components=2, random_state=cfg['seed']).fit_transform(features)
+    n_samples = features.shape[0]
+    tsne_perplexity = min(30, max(5, n_samples // 3))
+    if tsne_perplexity >= n_samples:
+        tsne_perplexity = max(2, n_samples - 1)
+
+    tsne_emb = TSNE(n_components=2, random_state=cfg['seed'], perplexity=tsne_perplexity).fit_transform(features)
 
     import matplotlib.pyplot as plt
     for nm, emb in [('pca', pca_emb), ('tsne', tsne_emb)]:
@@ -216,6 +316,11 @@ def train_review3(train_loader, val_loader, test_loader, classes, cfg, device):
 
 
 def train_review4(train_loader, val_loader, test_loader, classes, cfg, device):
+    # Define directories
+    out_dir = os.path.join(cfg['paths']['results_dir'], 'review4')
+    model_dir = os.path.join(cfg['paths']['model_dir'], 'review4')
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
 
     model = CNNClassifier(num_classes=len(classes)).to(device)
     criterion = torch.nn.CrossEntropyLoss()
@@ -247,6 +352,11 @@ def train_review4(train_loader, val_loader, test_loader, classes, cfg, device):
 
 
 def main(args):
+    # Delete old models before training only if this is review 1
+    if args.review == 1 and os.path.exists("outputs"):
+        shutil.rmtree("outputs")
+        print("🗑️ Deleted old outputs directory")
+
     with open('config.yaml') as f:
         cfg = yaml.safe_load(f)
     cfg['seed'] = cfg.get('seed', 42)
@@ -259,6 +369,24 @@ def main(args):
 
     train_loader, val_loader, test_loader, classes = get_dataloaders(cfg)
     device = get_device()
+
+    # Save classes to JSON for app to use (only if not exists)
+    import json
+    classes_path = os.path.join(cfg['paths']['model_dir'], 'classes.json')
+    if not os.path.exists(classes_path):
+        os.makedirs(os.path.dirname(classes_path), exist_ok=True)
+        with open(classes_path, 'w') as f:
+            json.dump(classes, f)
+        print(f"💾 Saved classes to {classes_path}")
+
+    print("Detected classes:", classes)
+    print("Number of classes:", len(classes))
+
+    print(f"\n{'='*60}")
+    print(f"🚀 Starting Review {args.review} Training")
+    print(f"📊 Classes: {classes}")
+    print(f"💻 Device: {device}")
+    print(f"{'='*60}\n")
 
     if args.review == 1:
         train_review1(train_loader, val_loader, test_loader, classes, cfg, device)

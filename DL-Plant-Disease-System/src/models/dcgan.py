@@ -46,4 +46,7 @@ class DCGANDiscriminator(nn.Module):
         )
 
     def forward(self, x):
-        return self.net(x).view(-1, 1).squeeze(1)
+        out = self.net(x)
+        # output shape could be [B,1,H,W] depending on input size; reduce spatial dims to scalar per image
+        out = out.view(out.size(0), -1).mean(dim=1)
+        return out
