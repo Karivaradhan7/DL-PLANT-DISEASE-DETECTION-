@@ -1,0 +1,14 @@
+torch>=2.0.0
+torchvision>=0.15.0
+pandas
+scikit-learn
+matplotlib
+seaborn
+pyyaml
+tqdm
+streamlit
+numpy
+Pillow
+opencv-python
+scikit-image
+umap-learn

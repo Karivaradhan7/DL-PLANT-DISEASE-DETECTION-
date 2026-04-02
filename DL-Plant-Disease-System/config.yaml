@@ -1,0 +1,32 @@
+seed: 42
+batch_size: 32
+num_epochs: 15
+learning_rate: 0.0001
+image_size: 128
+num_workers: 4
+train_split: 0.7
+val_split: 0.15
+test_split: 0.15
+classes: 15
+use_gpu: true
+
+paths:
+  data_dir: "./data/plant_disease"
+  model_dir: "./outputs/models"
+  results_dir: "./outputs/results"
+  artifacts_dir: "./outputs/artifacts"
+
+experiments:
+  review1:
+    mlp_hidden: 256
+    cnn_channels: [32, 64, 128]
+  review2:
+    pretrained_models: ["resnet50", "mobilenet_v2"]
+    sequence_len: 5
+    hidden_size: 128
+  review3:
+    ae_latent_dim: 64
+    gan_latent_dim: 100
+  review4:
+    tune: false
+    predictor: "resnet50"
