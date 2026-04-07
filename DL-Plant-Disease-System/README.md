@@ -42,6 +42,15 @@ Using publicly available plant disease image datasets (e.g., PlantVillage). Imag
 3. `python train.py --review 1` (or 2, 3, 4)
 4. `streamlit run app/app.py`
 
+## Academic Evaluation Summary
+
+This project demonstrates academic-grade plant disease detection using deep learning and a Streamlit interface. It includes:
+
+- Project overview: plant disease detection using CNNs, transfer learning, and hybrid models.
+- How to run: `cd DL-Plant-Disease-System && python -m pip install -r requirements.txt && streamlit run app/app.py`
+- Models used: CNN, MLP, Transfer Learning (MobileNetV2/ResNet), LSTM, GRU, Autoencoder, GAN.
+- Dataset: PlantVillage leaf images for healthy and diseased plant classes.
+
 ## Results
 
 - Metrics and plots saved in `outputs/results/`.
